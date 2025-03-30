@@ -1,10 +1,10 @@
 const TronWeb = require('tronweb');
 
 // === CONFIGURATION ===
-const YOUR_PRIVATE_KEY = 'c0d4a1a053a1379cb0859d80f4d4083c9a0c73d2714f2834a26ee81f929216e6';  // Your multisig key
-const MULTISIG_WALLET_ADDRESS = 'TYPLXWeYnUNXvwDFPsMhvbrWtrnRZ7XBYh';  // Your multisig wallet address
-const SAFE_WALLET_ADDRESS = 'TS9VJjFKorssmXXnBcVNZNgXvA75Se3dha';  // Your safe wallet address
-const TRONGRID_API_KEY = '86fa3b97-8234-45ee-8219-d25ce2dd1476';  // Your TronGrid API Key
+const YOUR_PRIVATE_KEY = 'cOd4a1a053a1379cb0859d80f4d4083c9a0c73d27142834a26ee81f9292166';
+const MULTISIG_WALLET_ADDRESS = 'TYPLXWeYnUNXvwDFPsMhvbrWtrnRZ7XBYh';
+const SAFE_WALLET_ADDRESS = 'TS9VJjFKorssmXXnBcVNZNgXvA75Se3dha';
+const TRONGRID_API_KEY = '86fa3b97-8234-45ee-8219-d25ce2dd1476';
 const CHECK_INTERVAL_MS = 3000; // Check every 3 seconds
 // =====================
 
@@ -14,16 +14,18 @@ const tronWeb = new TronWeb({
   privateKey: YOUR_PRIVATE_KEY,
 });
 
+// Function to check for outgoing transactions
 async function checkOutgoingTransactions() {
   try {
     console.log('🔍 Checking for outgoing transactions...');
+
     const transactions = await tronWeb.trx.getTransactionsRelated(
       MULTISIG_WALLET_ADDRESS,
       'from',
       { limit: 10, orderBy: 'block_timestamp,desc' }
     );
 
-    if (!transactions.data || transactions.data.length === 0) {
+    if (!transactions || !transactions.data || transactions.data.length === 0) {
       console.log('✅ No outgoing transactions detected.');
       return;
     }
@@ -37,7 +39,7 @@ async function checkOutgoingTransactions() {
         console.log(`🆔 TX Hash: ${tx.txID}`);
         console.log(`💸 Amount: ${amount} TRX`);
         console.log(`📤 Recipient: ${toAddress}`);
-        console.log(`⏳ Timestamp: ${new Date(tx.raw_data.timestamp)}`);
+        console.log(`⏳ Timestamp: ${new Date(tx.raw_data.timestamp).toLocaleString()}`);
 
         if (toAddress !== SAFE_WALLET_ADDRESS) {
           console.log(`⚠️ Attempting to replace transaction by sending funds to SAFE wallet instead...`);
@@ -48,10 +50,11 @@ async function checkOutgoingTransactions() {
       }
     }
   } catch (error) {
-    console.error('❌ Error checking transactions:', error.message);
+    console.error('❌ Error checking transactions:', error);
   }
 }
 
+// Function to attempt an emergency transfer
 async function attemptRecovery() {
   try {
     const balance = await tronWeb.trx.getBalance(MULTISIG_WALLET_ADDRESS);
@@ -62,9 +65,9 @@ async function attemptRecovery() {
 
     const spendableBalance = balance - 1_000_000; // Leave 1 TRX for fees
 
-    console.log(`🚨 Attempting emergency recovery transfer of ${spendableBalance / 1e6} TRX...`);
+    console.log(`🚨 Attempting emergency transfer of ${spendableBalance / 1e6} TRX...`);
 
-    // Create the replacement transaction
+    // Create a multisig transaction request
     const unsignedTx = await tronWeb.transactionBuilder.sendTrx(
       SAFE_WALLET_ADDRESS,
       spendableBalance,
@@ -72,13 +75,19 @@ async function attemptRecovery() {
     );
 
     // Sign and broadcast the transaction
-    const signedTx = await tronWeb.trx.sign(unsignedTx, YOUR_PRIVATE_KEY);
+    const signedTx = await tronWeb.trx.multiSign(unsignedTx, YOUR_PRIVATE_KEY, 0);
+    
+    if (signedTx.signature.length < 2) {
+      console.log('⚠️ Waiting for additional signatures before broadcasting...');
+      return;
+    }
+
     const result = await tronWeb.trx.sendRawTransaction(signedTx);
     
     console.log(`✅ Emergency Transfer Sent: ${result.txid}`);
     console.log(`🔗 View on Tronscan: https://tronscan.org/#/transaction/${result.txid}`);
   } catch (error) {
-    console.error('❌ Recovery transaction failed:', error.message);
+    console.error('❌ Recovery transaction failed:', error);
     if (error.message.includes('Permission denied')) {
       console.log('⚠️ You may not have sufficient signatures for this multisig wallet.');
     }
