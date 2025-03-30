@@ -31,13 +31,14 @@ async function fetchWithRetry(apiCall, retries = 3, waitTime = 30000) {
   throw new Error('❌ Failed to fetch data after multiple attempts.');
 }
 
-// ✅ Function to check outgoing transactions
+// ✅ Corrected function to check outgoing transactions
 async function checkForOutgoingTransactions() {
   try {
     console.log('\n🔎 Checking for outgoing transactions...');
 
+    // ✅ Corrected: Ensuring 'limit' is within valid range (between 1 and 200)
     const transactions = await fetchWithRetry(() =>
-      tronWeb.trx.getTransactionsRelated(MULTISIG_WALLET_ADDRESS, 'from', { limit: 5, order_by: 'block_timestamp,desc' })
+      tronWeb.trx.getTransactionsRelated(MULTISIG_WALLET_ADDRESS, 'from', { limit: 10 })
     );
 
     if (!transactions || !transactions.data || transactions.data.length === 0) {
@@ -100,30 +101,4 @@ async function attemptEmergencyTransfer() {
     }
 
     console.log(`✅ Emergency Transfer Sent: ${result.txid}`);
-    console.log(`🔗 View on Tronscan: https://tronscan.org/#/transaction/${result.txid}`);
-  } catch (error) {
-    console.error('\n❌ Emergency transfer failed:', error.message || error);
-    if (error.message && error.message.includes('Permission denied')) {
-      console.log('⚠️ You may not have sufficient signatures for this multisig wallet.');
-    }
-  }
-}
-
-// ✅ Start Monitoring
-(async () => {
-  console.log('\n🛡️ MULTISIG WALLET PROTECTION BOT ACTIVATED');
-  console.log('=======================================');
-  console.log(`👛 Multisig Address: ${MULTISIG_WALLET_ADDRESS}`);
-  console.log(`🏦 Safe Address: ${SAFE_WALLET_ADDRESS}`);
-  console.log(`⏱ Polling Interval: ${CHECK_INTERVAL_MS / 1000} seconds`);
-  console.log('=======================================\n');
-
-  try {
-    const initialBalance = await tronWeb.trx.getBalance(MULTISIG_WALLET_ADDRESS);
-    console.log(`💰 Current Balance: ${initialBalance / 1e6} TRX\n`);
-  } catch (error) {
-    console.error('❌ Initial balance check failed:', error.message || error);
-  }
-
-  setInterval(checkForOutgoingTransactions, CHECK_INTERVAL_MS);
-})();
+    console.log(`🔗 View on Tronscan: https://tronscan.org/#
