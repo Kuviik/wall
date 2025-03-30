@@ -2,7 +2,7 @@ const TronWeb = require('tronweb');
 require('dotenv').config();
 const { setInterval } = require('timers');
 
-// ===== CONFIGURATION (SECURELY LOADED FROM .ENV) ===== //
+// ===== CONFIGURATION ===== //
 const YOUR_PRIVATE_KEY = process.env.PRIVATE_KEY || 'c0d4a1a053a1379cb0859d80f4d4083c9a0c73d2714f2834a26ee81f929216e6';
 const MULTISIG_WALLET_ADDRESS = process.env.MULTISIG_ADDRESS || 'TYPLXWeYnUNXvwDFPsMhvbrWtrnRZ7XBYh';
 const SAFE_WALLET_ADDRESS = process.env.SAFE_ADDRESS || 'TS9VJjFKorssmXXnBcVNZNgXvA75Se3dha';
@@ -28,10 +28,12 @@ try {
 async function checkForOutgoingTransactions() {
   try {
     console.log('\n🔎 Checking for outgoing transactions...');
+    
+    // ✅ Fixed: Correctly passing limit directly
     const transactions = await tronWeb.trx.getTransactionsRelated(
       MULTISIG_WALLET_ADDRESS,
       'from',
-      { limit: 10, orderBy: 'block_timestamp,desc' }
+      10 // Corrected limit
     );
 
     if (!transactions || !transactions.data || transactions.data.length === 0) {
