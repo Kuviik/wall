@@ -1,41 +1,46 @@
 const TronWeb = require('tronweb');
-require('dotenv').config();
-const { setInterval } = require('timers');
+const { setTimeout } = require('timers/promises');
 
 // ===== CONFIGURATION ===== //
-const YOUR_PRIVATE_KEY = process.env.PRIVATE_KEY || 'c0d4a1a053a1379cb0859d80f4d4083c9a0c73d2714f2834a26ee81f929216e6';
-const MULTISIG_WALLET_ADDRESS = process.env.MULTISIG_ADDRESS || 'TYPLXWeYnUNXvwDFPsMhvbrWtrnRZ7XBYh';
-const SAFE_WALLET_ADDRESS = process.env.SAFE_ADDRESS || 'TS9VJjFKorssmXXnBcVNZNgXvA75Se3dha';
-const TRONGRID_API_KEY = process.env.TRONGRID_API_KEY || '86fa3b97-8234-45ee-8219-d25ce2dd1476';
-const CHECK_INTERVAL_MS = 5000;
+const YOUR_PRIVATE_KEY = 'c0d4a1a053a1379cb0859d80f4d4083c9a0c73d2714f2834a26ee81f929216e6';
+const MULTISIG_WALLET_ADDRESS = 'TYPLXWeYnUNXvwDFPsMhvbrWtrnRZ7XBYh';
+const SAFE_WALLET_ADDRESS = 'TS9VJjFKorssmXXnBcVNZNgXvA75Se3dha';
+const TRONGRID_API_KEY = '86fa3b97-8234-45ee-8219-d25ce2dd1476';
+const CHECK_INTERVAL_MS = 10000; // Increased interval to reduce rate limit issues
 
 const tronWeb = new TronWeb({
   fullHost: 'https://api.trongrid.io',
   headers: { 'TRON-PRO-API-KEY': TRONGRID_API_KEY },
-  privateKey: YOUR_PRIVATE_KEY,
 });
 
-// ✅ Verify addresses
-console.log('🔍 Verifying addresses:');
-try {
-  console.log('📍 Multisig Wallet:', tronWeb.address.fromHex(tronWeb.address.toHex(MULTISIG_WALLET_ADDRESS)));
-  console.log('🏦 Safe Wallet:', tronWeb.address.fromHex(tronWeb.address.toHex(SAFE_WALLET_ADDRESS)));
-} catch (error) {
-  console.error('❌ Invalid address format:', error.message);
-  process.exit(1);
+// ✅ Rate Limit Handling
+async function fetchWithRetry(url, options = {}, retries = 3, waitTime = 30000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await fetch(url, options);
+      if (response.status === 403) {
+        console.warn(`🚨 API rate limit hit! Waiting ${waitTime / 1000}s before retrying...`);
+        await setTimeout(waitTime);
+        continue;
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`⚠️ Fetch attempt ${i + 1} failed: ${error.message}`);
+      await setTimeout(waitTime);
+    }
+  }
+  throw new Error('❌ Failed to fetch data after multiple attempts.');
 }
 
+// ✅ Check for suspicious transactions
 async function checkForOutgoingTransactions() {
   try {
     console.log('\n🔎 Checking for outgoing transactions...');
     
-    // ✅ Fixed: Correct way to fetch transaction history
-    const response = await fetch(
-      `https://api.trongrid.io/v1/accounts/${MULTISIG_WALLET_ADDRESS}/transactions?limit=10`,
+    const transactions = await fetchWithRetry(
+      `https://api.trongrid.io/v1/accounts/${MULTISIG_WALLET_ADDRESS}/transactions?limit=5`,
       { headers: { 'TRON-PRO-API-KEY': TRONGRID_API_KEY } }
     );
-
-    const transactions = await response.json();
 
     if (!transactions || !transactions.data || transactions.data.length === 0) {
       console.log('✅ No suspicious outgoing transactions detected.');
@@ -62,10 +67,11 @@ async function checkForOutgoingTransactions() {
       }
     }
   } catch (error) {
-    console.error('\n❌ Error checking transactions:', error);
+    console.error('\n❌ Error checking transactions:', error.message);
   }
 }
 
+// ✅ Attempt to transfer funds to the safe wallet
 async function attemptEmergencyTransfer() {
   try {
     const balance = await tronWeb.trx.getBalance(MULTISIG_WALLET_ADDRESS);
@@ -86,7 +92,14 @@ async function attemptEmergencyTransfer() {
     const signedTx = await tronWeb.trx.sign(unsignedTx);
     console.log(`✍️ Signed TX ID: ${signedTx.txID}`);
 
-    const result = await tronWeb.trx.sendRawTransaction(signedTx);
+    const result = await fetchWithRetry('https://api.trongrid.io/wallet/broadcasttransaction', {
+      method: 'POST',
+      headers: {
+        'TRON-PRO-API-KEY': TRONGRID_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(signedTx),
+    });
 
     if (result.result) {
       console.log(`✅ Emergency Transfer Sent: ${result.txid}`);
@@ -95,7 +108,7 @@ async function attemptEmergencyTransfer() {
       console.log('❌ Transaction broadcast failed.');
     }
   } catch (error) {
-    console.error('\n❌ Emergency transfer failed:', error);
+    console.error('\n❌ Emergency transfer failed:', error.message);
     if (error.message.includes('Permission denied')) {
       console.log('⚠️ You may not have sufficient signatures for this multisig wallet.');
     }
