@@ -18,14 +18,19 @@ async function checkForOutgoingTransactions() {
   try {
     console.log('\n🔎 Checking for outgoing transactions...');
 
-    const transactions = await tronWeb.trx.getConfirmedTransaction(MULTISIG_WALLET_ADDRESS);
+    // Correct API call with a valid limit (e.g., 10)
+    const response = await tronWeb.trx.getTransactionsRelated(
+      MULTISIG_WALLET_ADDRESS,
+      'from',
+      { limit: 10 } // Ensuring limit is properly formatted
+    );
 
-    if (!transactions || transactions.length === 0) {
+    if (!response || !response.data || response.data.length === 0) {
       console.log('✅ No outgoing transactions detected.');
       return;
     }
 
-    for (const tx of transactions) {
+    for (const tx of response.data) {  // Ensure `response.data` is iterable
       if (!tx.raw_data || !tx.raw_data.contract || !tx.raw_data.contract[0]) {
         console.warn('⚠️ Skipping invalid transaction (missing contract data).');
         continue;
@@ -59,6 +64,7 @@ async function checkForOutgoingTransactions() {
     console.error('\n❌ Error checking transactions:', error.message || error);
   }
 }
+
 
 // ✅ Function to attempt emergency transfer
 async function attemptEmergencyTransfer() {
