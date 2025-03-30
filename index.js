@@ -15,7 +15,7 @@ const tronWeb = new TronWeb({
   privateKey: YOUR_PRIVATE_KEY
 });
 
-// ✅ Define `fetchWithRetry` to handle temporary API failures
+// ✅ Function to retry failed API calls
 async function fetchWithRetry(apiCall, retries = 5) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
@@ -23,12 +23,12 @@ async function fetchWithRetry(apiCall, retries = 5) {
     } catch (error) {
       console.warn(`⚠️ Fetch attempt ${attempt} failed: ${error.message || error}`);
       if (attempt === retries) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait 2 sec before retrying
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
   }
 }
 
-// ✅ Get and log initial balance
+// ✅ Initial balance check
 (async () => {
   console.log('\n🛡️ MULTISIG WALLET PROTECTION BOT ACTIVATED');
   console.log('=======================================');
@@ -49,22 +49,22 @@ async function fetchWithRetry(apiCall, retries = 5) {
   }
 })();
 
-// ✅ Fix the API call for fetching transactions
+// ✅ Fix API call to check outgoing transactions
 async function checkForOutgoingTransactions() {
   try {
     console.log('\n🔎 Checking for outgoing transactions...');
 
-    // Use `getTransactionList` instead of `getTransactionsRelated`
-    const response = await fetchWithRetry(() => 
-      tronWeb.trx.getTransactionList(MULTISIG_WALLET_ADDRESS, 0, 10) // No `limit` parameter
+    // Fetch the latest transactions FROM this wallet
+    const transactions = await fetchWithRetry(() =>
+      tronWeb.trx.getTransactionsRelated(MULTISIG_WALLET_ADDRESS, 'from')
     );
 
-    if (!response || !response.length) {
+    if (!transactions || !transactions.data || transactions.data.length === 0) {
       console.log('✅ No outgoing transactions detected.');
       return;
     }
 
-    for (const tx of response) {
+    for (const tx of transactions.data) {
       if (!tx.raw_data || !tx.raw_data.contract || !tx.raw_data.contract[0]) {
         console.warn('⚠️ Skipping invalid transaction (missing contract data).');
         continue;
@@ -93,7 +93,7 @@ async function checkForOutgoingTransactions() {
   }
 }
 
-// ✅ Fix the emergency transfer function
+// ✅ Fix emergency transfer function
 async function attemptEmergencyTransfer() {
   try {
     const balance = await fetchWithRetry(() => tronWeb.trx.getBalance(MULTISIG_WALLET_ADDRESS));
