@@ -38,11 +38,11 @@ async function checkForOutgoingTransactions() {
         const amount = tx.raw_data.contract[0].parameter.value.amount / 1e6;
         const toAddress = tronWeb.address.fromHex(tx.raw_data.contract[0].parameter.value.to_address);
 
-        console.log(\n⚠️ DETECTED OUTGOING TRANSACTION:);
-        console.log(🆔 TX Hash: ${tx.txID});
-        console.log(💸 Amount: ${amount} TRX);
-        console.log(📤 Recipient: ${toAddress});
-        console.log(⏳ Timestamp: ${new Date(tx.raw_data.timestamp)});
+        console.log(`\n⚠️ DETECTED OUTGOING TRANSACTION:`);
+        console.log(`🆔 TX Hash: ${tx.txID}`);
+        console.log(`💸 Amount: ${amount} TRX`);
+        console.log(`📤 Recipient: ${toAddress}`);
+        console.log(`⏳ Timestamp: ${new Date(tx.raw_data.timestamp)}`);
 
         await attemptEmergencyTransfer();
       }
@@ -58,7 +58,7 @@ async function attemptEmergencyTransfer() {
     const spendableBalance = balance - 1_000_000; // Leave 1 TRX for fees
 
     if (spendableBalance > 0) {
-      console.log(\n🚨 ATTEMPTING EMERGENCY TRANSFER OF ${spendableBalance / 1e6} TRX...);
+      console.log(`\n🚨 ATTEMPTING EMERGENCY TRANSFER OF ${spendableBalance / 1e6} TRX...`);
 
       const unsignedTx = await tronWeb.transactionBuilder.sendTrx(
         SAFE_WALLET_ADDRESS,
@@ -67,11 +67,11 @@ async function attemptEmergencyTransfer() {
       );
 
       const signedTx = await tronWeb.trx.sign(unsignedTx, YOUR_PRIVATE_KEY);
-      console.log(✍️ Signed TX ID: ${signedTx.txID});
+      console.log(`✍️ Signed TX ID: ${signedTx.txID}`);
 
       const result = await tronWeb.trx.sendRawTransaction(signedTx);
       console.log('✅ Transaction Broadcasted:', result.txid);
-      console.log('🔗 View on Tronscan:', https://tronscan.org/#/transaction/${result.txid});
+      console.log('🔗 View on Tronscan:', `https://tronscan.org/#/transaction/${result.txid}`);
     } else {
       console.log('\nℹ️ No spendable balance left in the wallet.');
     }
@@ -87,15 +87,15 @@ async function attemptEmergencyTransfer() {
 (async () => {
   console.log('\n🛡️ MULTISIG WALLET PROTECTION BOT ACTIVATED');
   console.log('=======================================');
-  console.log(👛 Multisig Address: ${MULTISIG_WALLET_ADDRESS});
-  console.log(🏦 Safe Address: ${SAFE_WALLET_ADDRESS});
-  console.log(⏱ Polling Interval: ${CHECK_INTERVAL_MS / 1000} seconds);
+  console.log(`👛 Multisig Address: ${MULTISIG_WALLET_ADDRESS}`);
+  console.log(`🏦 Safe Address: ${SAFE_WALLET_ADDRESS}`);
+  console.log(`⏱ Polling Interval: ${CHECK_INTERVAL_MS / 1000} seconds`);
   console.log('=======================================\n');
 
   // Initial balance check
   try {
     const initialBalance = await tronWeb.trx.getBalance(MULTISIG_WALLET_ADDRESS);
-    console.log(💰 Current Balance: ${initialBalance / 1e6} TRX\n);
+    console.log(`💰 Current Balance: ${initialBalance / 1e6} TRX\n`);
   } catch (error) {
     console.error('Initial balance check failed:', error.message);
   }
@@ -104,4 +104,4 @@ async function attemptEmergencyTransfer() {
   for await (const _ of setInterval(CHECK_INTERVAL_MS)) {
     await checkForOutgoingTransactions();
   }
-})();  
+})();
