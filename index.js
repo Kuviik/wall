@@ -14,38 +14,11 @@ const tronWeb = new TronWeb({
 });
 
 // ✅ Function to handle API retries
-async function fetchWithRetry(apiCall, retries = 5, waitTime = 30000) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const response = await apiCall();
-      if (!response || Object.keys(response).length === 0) {
-        throw new Error('❌ Empty API response received.');
-      }
-      return response;
-    } catch (error) {
-      console.error(`⚠️ Fetch attempt ${i + 1} failed:`, error.message || error);
-
-      if (error.response && error.response.status === 403) {
-        console.warn(`🚨 API rate limit hit! Waiting ${waitTime / 1000}s before retrying...`);
-        await setTimeout(waitTime);
-      } else {
-        await setTimeout(5000); // Wait 5 seconds before retrying
-      }
-    }
-  }
-  throw new Error('❌ API fetch failed after multiple attempts.');
-}
-
-// ✅ Function to check outgoing transactions
 async function checkForOutgoingTransactions() {
   try {
     console.log('\n🔎 Checking for outgoing transactions...');
 
-    const transactions = await tronWeb.trx.getTransactionsRelated(
-      MULTISIG_WALLET_ADDRESS,
-      'from',
-      10 // ✅ Correct limit format
-    );
+    const transactions = await tronWeb.trx.getConfirmedTransaction(MULTISIG_WALLET_ADDRESS);
 
     if (!transactions || transactions.length === 0) {
       console.log('✅ No outgoing transactions detected.');
