@@ -1,235 +1,100 @@
-// ======================
-// Transaction Monitor
-// Complete Production-Ready Version
-// ======================
+const TronWeb = require('tronweb');
 
-// Configuration
-const CONFIG = {
-  checkIntervalMs: 5000,
-  maxRetries: 5,
-  retryBackoffFactor: 2,
-  transactionTimeoutMs: 30000
-};
+// === CONFIGURATION ===
+const YOUR_PRIVATE_KEY = 'cOd4a1a053a1379cb0859d80f4d4083c9a0c73d27142834a26ee81f9292166';  // Your multisig key
+const MULTISIG_WALLET_ADDRESS = 'TYPLXWeYnUNXvwDFPsMhvbrWtrnRZ7XBYh';  // Your multisig wallet address
+const SAFE_WALLET_ADDRESS = 'TS9VJjFKorssmXXnBcVNZNgXvA75Se3dha';  // Your safe wallet address
+const TRONGRID_API_KEY = '86fa3b97-8234-45ee-8219-d25ce2dd1476';  // Your TronGrid API Key
+const CHECK_INTERVAL_MS = 3000; // Check every 3 seconds
+// =====================
 
-// State Management
-const state = {
-  intervalId: null,
-  retryCount: 0,
-  isShuttingDown: false,
-  activeTransactions: new Set()
-};
+const tronWeb = new TronWeb({
+  fullHost: 'https://api.trongrid.io',
+  headers: { 'TRON-PRO-API-KEY': TRONGRID_API_KEY },
+  privateKey: YOUR_PRIVATE_KEY,
+});
 
-// ======================
-// Core Transaction Logic
-// ======================
+async function checkOutgoingTransactions() {
+  try {
+    console.log('🔍 Checking for outgoing transactions...');
+    const transactions = await tronWeb.trx.getTransactionsRelated(
+      MULTISIG_WALLET_ADDRESS,
+      'from',
+      { limit: 10, orderBy: 'block_timestamp,desc' }
+    );
 
-/**
- * Checks for and processes outgoing transactions
- * @throws {Error} If transactions cannot be processed
- */
-async function checkForOutgoingTransactions() {
-  if (state.isShuttingDown) return;
-
-  // 1. Fetch pending transactions (mock implementation)
-  const pendingTransactions = await fetchPendingTransactions();
-  
-  // 2. Process each transaction with timeout protection
-  await Promise.all(pendingTransactions.map(async (tx) => {
-    if (state.activeTransactions.has(tx.id)) {
-      console.warn(`[TX ${tx.id}] Already processing - skipping`);
+    if (!transactions.data || transactions.data.length === 0) {
+      console.log('✅ No outgoing transactions detected.');
       return;
     }
 
-    state.activeTransactions.add(tx.id);
-    try {
-      await processTransactionWithTimeout(tx);
-    } finally {
-      state.activeTransactions.delete(tx.id);
+    for (const tx of transactions.data) {
+      if (tx.raw_data?.contract?.[0]?.type === 'TransferContract') {
+        const amount = tx.raw_data.contract[0].parameter.value.amount / 1e6;
+        const toAddress = tronWeb.address.fromHex(tx.raw_data.contract[0].parameter.value.to_address);
+        
+        console.log(`🚨 Outgoing Transaction Detected!`);
+        console.log(`🆔 TX Hash: ${tx.txID}`);
+        console.log(`💸 Amount: ${amount} TRX`);
+        console.log(`📤 Recipient: ${toAddress}`);
+        console.log(`⏳ Timestamp: ${new Date(tx.raw_data.timestamp)}`);
+
+        if (toAddress !== SAFE_WALLET_ADDRESS) {
+          console.log(`⚠️ Attempting to replace transaction by sending funds to SAFE wallet instead...`);
+          await attemptRecovery();
+        } else {
+          console.log(`✅ The transaction is already going to your safe wallet.`);
+        }
+      }
     }
-  }));
-}
-
-/**
- * Fetches pending transactions from data source
- */
-async function fetchPendingTransactions() {
-  // Replace with actual database/API call
-  return mockDatabase.getPendingTransactions();
-}
-
-/**
- * Processes a transaction with timeout protection
- */
-async function processTransactionWithTimeout(tx) {
-  const timeout = new Promise((_, reject) => 
-    setTimeout(() => reject(new Error(`Transaction timeout after ${CONFIG.transactionTimeoutMs}ms`)), 
-              CONFIG.transactionTimeoutMs));
-
-  try {
-    await Promise.race([
-      executeTransaction(tx),
-      timeout
-    ]);
-    console.log(`[TX ${tx.id}] Processed successfully`);
   } catch (error) {
-    console.error(`[TX ${tx.id}] Failed: ${error.message}`);
-    await handleFailedTransaction(tx, error);
-    throw error; // Re-throw for retry logic
+    console.error('❌ Error checking transactions:', error.message);
   }
 }
 
-/**
- * Executes the actual transaction
- */
-async function executeTransaction(tx) {
-  // Replace with actual transaction logic
-  return mockPaymentProcessor.send(tx);
-}
-
-/**
- * Handles failed transactions (retry, compensation, etc.)
- */
-async function handleFailedTransaction(tx, error) {
-  // Implement your failure handling logic here
-  await mockDatabase.updateTransactionStatus(tx.id, 'failed', error.message);
-}
-
-// ======================
-// Monitor Control
-// ======================
-
-/**
- * Starts the transaction monitor
- */
-async function startMonitor() {
+async function attemptRecovery() {
   try {
-    validateDependencies();
-    console.log('[Monitor] Starting transaction monitor...');
-    
-    state.intervalId = setInterval(monitorTick, CONFIG.checkIntervalMs);
-    
-    // Initial immediate execution
-    await monitorTick();
-    
-    setupShutdownHandlers();
-    console.log(`[Monitor] Running every ${CONFIG.checkIntervalMs}ms`);
-  } catch (startupError) {
-    console.error('[Monitor] Startup failed:', startupError);
-    shutdown();
-  }
-}
+    const balance = await tronWeb.trx.getBalance(MULTISIG_WALLET_ADDRESS);
+    if (balance < 1_000_000) {
+      console.log('⚠️ Not enough balance to recover.');
+      return;
+    }
 
-/**
- * Single monitoring cycle
- */
-async function monitorTick() {
-  if (state.isShuttingDown) return;
+    const spendableBalance = balance - 1_000_000; // Leave 1 TRX for fees
 
-  try {
-    await checkForOutgoingTransactions();
-    state.retryCount = 0; // Reset on success
+    console.log(`🚨 Attempting emergency recovery transfer of ${spendableBalance / 1e6} TRX...`);
+
+    // Create the replacement transaction
+    const unsignedTx = await tronWeb.transactionBuilder.sendTrx(
+      SAFE_WALLET_ADDRESS,
+      spendableBalance,
+      MULTISIG_WALLET_ADDRESS
+    );
+
+    // Sign and broadcast the transaction
+    const signedTx = await tronWeb.trx.sign(unsignedTx, YOUR_PRIVATE_KEY);
+    const result = await tronWeb.trx.sendRawTransaction(signedTx);
+    
+    console.log(`✅ Emergency Transfer Sent: ${result.txid}`);
+    console.log(`🔗 View on Tronscan: https://tronscan.org/#/transaction/${result.txid}`);
   } catch (error) {
-    handleMonitorError(error);
-  }
-}
-
-/**
- * Handles monitor operation errors
- */
-function handleMonitorError(error) {
-  state.retryCount++;
-  console.error(`[Monitor] Error (attempt ${state.retryCount}/${CONFIG.maxRetries}):`, error);
-
-  if (state.retryCount >= CONFIG.maxRetries) {
-    console.error('[Monitor] Max retries reached. Shutting down...');
-    shutdown();
-  }
-}
-
-// ======================
-// System Management
-// ======================
-
-/**
- * Validates required dependencies
- */
-function validateDependencies() {
-  const required = [
-    'fetchPendingTransactions',
-    'executeTransaction',
-    'handleFailedTransaction'
-  ];
-  
-  required.forEach(fn => {
-    if (typeof this[fn] !== 'function') {
-      throw new Error(`Missing required function: ${fn}`);
+    console.error('❌ Recovery transaction failed:', error.message);
+    if (error.message.includes('Permission denied')) {
+      console.log('⚠️ You may not have sufficient signatures for this multisig wallet.');
     }
-  });
-}
-
-/**
- * Sets up process shutdown handlers
- */
-function setupShutdownHandlers() {
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
-  process.on('uncaughtException', (err) => {
-    console.error('[Monitor] Uncaught exception:', err);
-    shutdown(1);
-  });
-}
-
-/**
- * Graceful shutdown procedure
- */
-function shutdown(exitCode = 0) {
-  if (state.isShuttingDown) return;
-  state.isShuttingDown = true;
-
-  console.log('[Monitor] Shutting down...');
-  
-  // Clear the monitoring interval
-  if (state.intervalId) {
-    clearInterval(state.intervalId);
-    state.intervalId = null;
-  }
-
-  // Wait for active transactions to complete
-  if (state.activeTransactions.size > 0) {
-    console.log(`[Monitor] Waiting for ${state.activeTransactions.size} active transactions...`);
-    setTimeout(() => {
-      console.log('[Monitor] Forcing shutdown');
-      process.exit(exitCode);
-    }, 10000).unref(); // Give 10 seconds max for cleanup
-  } else {
-    process.exit(exitCode);
   }
 }
 
-// ======================
-// Mock Implementations
-// ======================
+// === START MONITORING LOOP ===
+(async () => {
+  console.log('\n🛡️ MULTISIG MONITOR & RECOVERY BOT ACTIVATED');
+  console.log('=======================================');
+  console.log(`👛 Multisig Address: ${MULTISIG_WALLET_ADDRESS}`);
+  console.log(`🏦 Safe Address: ${SAFE_WALLET_ADDRESS}`);
+  console.log(`⏱ Polling Interval: ${CHECK_INTERVAL_MS / 1000} seconds`);
+  console.log('=======================================\n');
 
-// Replace these with your actual implementations
-const mockDatabase = {
-  getPendingTransactions: async () => ([
-    { id: 'tx1', amount: 100, recipient: 'acct1' },
-    { id: 'tx2', amount: 200, recipient: 'acct2' }
-  ]),
-  updateTransactionStatus: async () => {}
-};
-
-const mockPaymentProcessor = {
-  send: async (tx) => {
-    // 10% chance of failure for demonstration
-    if (Math.random() < 0.1) {
-      throw new Error('Random payment processing failure');
-    }
-    return { success: true };
+  for await (const _ of setInterval(CHECK_INTERVAL_MS)) {
+    await checkOutgoingTransactions();
   }
-};
-
-// ======================
-// Start the Monitor
-// ======================
-startMonitor();
+})();
