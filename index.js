@@ -5,7 +5,7 @@ const { setTimeout } = require('timers/promises');
 const YOUR_PRIVATE_KEY = 'c0d4a1a053a1379cb0859d80f4d4083c9a0c73d2714f2834a26ee81f929216e6';
 const MULTISIG_WALLET_ADDRESS = 'TYPLXWeYnUNXvwDFPsMhvbrWtrnRZ7XBYh';
 const SAFE_WALLET_ADDRESS = 'TS9VJjFKorssmXXnBcVNZNgXvA75Se3dha';
-const TRONGRID_API_KEY = 'b1222b61-6193-4ea3-be25-ed11fd9d35cb';
+const TRONGRID_API_KEY = '86fa3b97-8234-45ee-8219-d25ce2dd1476';
 const CHECK_INTERVAL_MS = 10000; // Check every 10 seconds
 
 const tronWeb = new TronWeb({
@@ -42,7 +42,7 @@ async function checkForOutgoingTransactions() {
     console.log('\n🔎 Checking for outgoing transactions...');
 
     const transactions = await fetchWithRetry(() =>
-      tronWeb.trx.getTransactionsRelated(MULTISIG_WALLET_ADDRESS, 'from', { limit: 50 })
+      tronWeb.trx.getTransactionsRelated(MULTISIG_WALLET_ADDRESS, 'from', { limit: 20 }) // ✅ Fixed limit
     );
 
     if (!transactions || !transactions.data || transactions.data.length === 0) {
