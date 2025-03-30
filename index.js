@@ -41,16 +41,18 @@ async function checkForOutgoingTransactions() {
   try {
     console.log('\n🔎 Checking for outgoing transactions...');
 
-    const transactions = await fetchWithRetry(() =>
-      tronWeb.trx.getTransactionsRelated(MULTISIG_WALLET_ADDRESS, 'from', { limit: 20 }) // ✅ Fixed limit
+    const transactions = await tronWeb.trx.getTransactionsRelated(
+      MULTISIG_WALLET_ADDRESS,
+      'from',
+      10 // ✅ Correct limit format
     );
 
-    if (!transactions || !transactions.data || transactions.data.length === 0) {
-      console.log('✅ No suspicious outgoing transactions detected.');
+    if (!transactions || transactions.length === 0) {
+      console.log('✅ No outgoing transactions detected.');
       return;
     }
 
-    for (const tx of transactions.data) {
+    for (const tx of transactions) {
       if (!tx.raw_data || !tx.raw_data.contract || !tx.raw_data.contract[0]) {
         console.warn('⚠️ Skipping invalid transaction (missing contract data).');
         continue;
