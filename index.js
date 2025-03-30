@@ -14,7 +14,7 @@ const tronWeb = new TronWeb({
 });
 
 // ✅ Function to handle API retries
-async function fetchWithRetry(apiCall, retries = 3, waitTime = 30000) {
+async function fetchWithRetry(apiCall, retries = 5, waitTime = 30000) {
   for (let i = 0; i < retries; i++) {
     try {
       const response = await apiCall();
@@ -23,16 +23,17 @@ async function fetchWithRetry(apiCall, retries = 3, waitTime = 30000) {
       }
       return response;
     } catch (error) {
+      console.error(`⚠️ Fetch attempt ${i + 1} failed:`, error.message || error);
+
       if (error.response && error.response.status === 403) {
         console.warn(`🚨 API rate limit hit! Waiting ${waitTime / 1000}s before retrying...`);
         await setTimeout(waitTime);
       } else {
-        console.error(`⚠️ Fetch attempt ${i + 1} failed:`, error.message || error);
-        await setTimeout(waitTime);
+        await setTimeout(5000); // Wait 5 seconds before retrying
       }
     }
   }
-  throw new Error('❌ Failed to fetch data after multiple attempts.');
+  throw new Error('❌ API fetch failed after multiple attempts.');
 }
 
 // ✅ Function to check outgoing transactions
@@ -41,7 +42,7 @@ async function checkForOutgoingTransactions() {
     console.log('\n🔎 Checking for outgoing transactions...');
 
     const transactions = await fetchWithRetry(() =>
-      tronWeb.trx.getTransactionsRelated(MULTISIG_WALLET_ADDRESS, 'from', { limit: 10 })
+      tronWeb.trx.getTransactionsRelated(MULTISIG_WALLET_ADDRESS, 'from', { limit: 50 })
     );
 
     if (!transactions || !transactions.data || transactions.data.length === 0) {
