@@ -1,118 +1,117 @@
-const TronWeb = require('tronweb');
+bgy65567056655555555555555555555555555555555const TronWeb = require('tronweb');
 const { setInterval } = require('timers/promises');
 
 // ===== CONFIGURATION ===== //
-const CONFIG = {
-  PRIVATE_KEY: 'c0d4a1a053a1379cb0859d80f4d4083c9a0c73d2714f2834a26ee81f929216e6',
-  MULTISIG_ADDRESS: 'TYPLXWeYnUNXvwDFPsMhvbrWtrnRZ7XBYh',
-  SAFE_ADDRESS: 'TS9VJjFKorssmXXnBcVNZNgXvA75Se3dha',
+const config = {
+  YOUR_PRIVATE_KEY: 'c0d4a1a053a1379cb0859d80f4d4083c9a0c73d2714f2834a26ee81f929216e6',
+  MULTISIG_WALLET_ADDRESS: 'TYPLXWeYnUNXvwDFPsMhvbrWtrnRZ7XBYh',
+  SAFE_WALLET_ADDRESS: 'TS9VJjFKorssmXXnBcVNZNgXvA75Se3dha',
   TRONGRID_API_KEY: '86fa3b97-8234-45ee-8219-d25ce2dd1476',
-  POLL_INTERVAL_MS: 5000,
-  MIN_FEE_TRX: 1
+  CHECK_INTERVAL_MS: 3000,
+  MIN_RESERVE_TRX: 1000000 // 1 TRX reserve for fees (changed from 1_000_000 for Node.js compatibility)
 };
+
+// ===== VALIDATION ===== //
+function validateConfig() {
+  if (!TronWeb.isAddress(config.MULTISIG_WALLET_ADDRESS)) {
+    throw new Error('Invalid MULTISIG_WALLET_ADDRESS');
+  }
+  if (!TronWeb.isAddress(config.SAFE_WALLET_ADDRESS)) {
+    throw new Error('Invalid SAFE_WALLET_ADDRESS');
+  }
+  if (!/^[a-fA-F0-9]{64}$/.test(config.YOUR_PRIVATE_KEY)) {
+    throw new Error('Invalid private key format');
+  }
+}
 
 // ===== TRONWEB SETUP ===== //
 const tronWeb = new TronWeb({
   fullHost: 'https://api.trongrid.io',
-  headers: { 'TRON-PRO-API-KEY': CONFIG.TRONGRID_API_KEY },
-  privateKey: CONFIG.PRIVATE_KEY
+  headers: { 'TRON-PRO-API-KEY': config.TRONGRID_API_KEY },
+  privateKey: config.YOUR_PRIVATE_KEY
 });
 
-// ===== IMPROVED LOGGER ===== //
-class Logger {
-  static info(...messages) {
-    console.log(`[INFO] ${new Date().toISOString()}`, ...messages);
-  }
-
-  static error(context, error) {
-    console.error(
-      [ERROR] ${new Date().toISOString()}\n +
-      Context: ${context}\n +
-      Error: ${error.message}\n +
-      Stack: ${error.stack?.split('\n')[1]?.trim() || 'No stack'}
-    );
-  }
-}
-
-// ===== VALIDATION FUNCTIONS ===== //
-function validateAddress(address) {
-  if (!tronWeb.isAddress(address)) {
-    throw new Error(`Invalid TRON address: ${address}`);
-  }
-  return true;
-}
-
 // ===== CORE FUNCTIONS ===== //
-async function getSpendableBalance() {
+async function getWalletBalance(address) {
   try {
-    const balance = await tronWeb.trx.getBalance(CONFIG.MULTISIG_ADDRESS);
-    const spendable = balance - (CONFIG.MIN_FEE_TRX * 1e6);
-    return spendable > 0 ? spendable : 0;
-  } catch (err) {
-    Logger.error('Balance check failed', err);
+    return await tronWeb.trx.getBalance(address);
+  } catch (error) {
+    console.error(`Balance check failed for ${address}:`, error.message);
     return 0;
   }
 }
 
-async function monitorTransactions() {
+async function monitorMultisig() {
   try {
-    const txs = await tronWeb.trx.getTransactionsRelated(
-      CONFIG.MULTISIG_ADDRESS,
+    const transactions = await tronWeb.trx.getTransactionsRelated(
+      config.MULTISIG_WALLET_ADDRESS,
       'from',
-      {
-        limit: 5,
+      { 
+        limit: 10,
         orderBy: 'block_timestamp,desc',
-        onlyConfirmed: false
+        onlyConfirmed: false,
+        onlyUnconfirmed: true
       }
     );
 
-    if (!txs?.data?.length) return;
+    if (!transactions  !transactions.data  !transactions.data.length) return;
 
-    for (const tx of txs.data) {
-      try {
-        const contract = tx.raw_data?.contract?.[0];
-        if (contract?.type === 'TransferContract') {
-          const amount = contract.parameter.value.amount / 1e6;
-          const recipient = tronWeb.address.fromHex(contract.parameter.value.to_address);
-          
-          Logger.info(`Suspicious TX detected: ${amount} TRX to ${recipient}`);
-          await attemptRecovery();
-        }
-      } catch (txErr) {
-        Logger.error('Transaction processing failed', txErr);
+    for (const tx of transactions.data) {
+      if (tx && tx.raw_data && tx.raw_data.contract && tx.raw_data.contract[0] && 
+          tx.raw_data.contract[0].type === 'TransferContract') {
+        await handleSuspiciousTransaction(tx);
       }
     }
-  } catch (monitorErr) {
-    Logger.error('Transaction monitoring failed', monitorErr);
+  } catch (error) {
+    console.error('Monitoring error:', error.message);
   }
+}
+
+async function handleSuspiciousTransaction(tx) {
+  const txInfo = {
+    id: tx.txID,
+    amount: tx.raw_data.contract[0].parameter.value.amount / 1000000,
+    to: tronWeb.address.fromHex(tx.raw_data.contract[0].parameter.value.to_address),
+    timestamp: new Date(tx.raw_data.timestamp)
+  };
+
+  console.log('\n🚨 Suspicious Transaction Detected:');
+  console.log('  TX ID:', txInfo.id);
+  console.log('  Amount:', txInfo.amount, 'TRX');
+  console.log('  Recipient:', txInfo.to);
+  console.log('  Time:', txInfo.timestamp);
+
+  await attemptRecovery();
 }
 
 async function attemptRecovery() {
   try {
-    const spendable = await getSpendableBalance();
-    if (spendable <= 0) {
-      Logger.info('No spendable balance available');
+    const balance = await getWalletBalance(config.MULTISIG_WALLET_ADDRESS);
+    const recoverableAmount = balance - config.MIN_RESERVE_TRX;
+
+    if (recoverableAmount <= 0) {
+      console.log('No recoverable funds remaining');
       return;
     }
 
-    Logger.info(`Attempting to recover ${spendable / 1e6} TRX`);
-    
+    console.log('Attempting to recover', recoverableAmount / 1000000, 'TRX...');
+
     const tx = await tronWeb.transactionBuilder.sendTrx(
-      CONFIG.SAFE_ADDRESS,
-      spendable,
-      CONFIG.MULTISIG_ADDRESS
+      config.SAFE_WALLET_ADDRESS,
+      recoverableAmount,
+      config.MULTISIG_WALLET_ADDRESS
     );
 
-    const signedTx = await tronWeb.trx.sign(tx);
+    const signedTx = await tronWeb.trx.sign(tx, config.YOUR_PRIVATE_KEY);
     const result = await tronWeb.trx.sendRawTransaction(signedTx);
-    
-    Logger.info(`Recovery successful! TXID: ${result.txid}`);
-    Logger.info(`View on Tronscan: https://tronscan.org/#/transaction/${result.txid}`);
-  } catch (recoveryErr) {
-    if (recoveryErr.message.includes('signature')) {
-      Logger.info('Recovery failed: Insufficient signatures for multisig');
-    } else {
-      Logger.error('Recovery attempt failed', recoveryErr);
+
+    console.log('✅ Recovery TX Broadcasted:');
+    console.log('  TX Hash:', result.txid);
+    console.log('  View on Tronscan:', `https://tronscan.org/#/transaction/${result.txid}`);
+  } catch (error) {
+    console.error('Recovery attempt failed:', error.message);
+    if (error.message.includes('signature')) {
+      console.log('⚠️ Insufficient signatures for multisig transaction');
     }
   }
 }
@@ -120,22 +119,22 @@ async function attemptRecovery() {
 // ===== MAIN EXECUTION ===== //
 (async () => {
   try {
-    // Validate all addresses first
-    validateAddress(CONFIG.MULTISIG_ADDRESS);
-    validateAddress(CONFIG.SAFE_ADDRESS);
-
-    Logger.info(`Starting protection bot for ${CONFIG.MULTISIG_ADDRESS}`);
-    Logger.info(`Safe address: ${CONFIG.SAFE_ADDRESS}`);
+    validateConfig();
     
-    const initialBalance = await getSpendableBalance();
-    Logger.info(`Initial spendable balance: ${initialBalance / 1e6} TRX`);
+    console.log('🔒 Multisig Protection Bot Activated');
+    console.log('    Monitoring:', config.MULTISIG_WALLET_ADDRESS);
+    console.log('    Safe Address:', config.SAFE_WALLET_ADDRESS);
+    console.log('');
 
-    // Start monitoring loop
-    for await (const _ of setInterval(CONFIG.POLL_INTERVAL_MS)) {
-      await monitorTransactions();
-    }
-  } catch (initErr) {
-    Logger.error('Initialization failed', initErr);
+    const initialBalance = await getWalletBalance(config.MULTISIG_WALLET_ADDRESS);
+    console.log('Initial Balance:', initialBalance / 1000000, 'TRX');
+
+    setInterval(async () => {
+      await monitorMultisig();
+    }, config.CHECK_INTERVAL_MS);
+
+  } catch (startupError) {
+    console.error('Bot startup failed:', startupError.message);
     process.exit(1);
   }
 })();
