@@ -13,7 +13,7 @@ const tronWeb = new TronWeb({
   headers: { 'TRON-PRO-API-KEY': TRONGRID_API_KEY },
 });
 
-// ✅ Rate Limit Handling
+// ✅ Function to handle API rate limits
 async function fetchWithRetry(apiCall, retries = 3, waitTime = 30000) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -31,13 +31,13 @@ async function fetchWithRetry(apiCall, retries = 3, waitTime = 30000) {
   throw new Error('❌ Failed to fetch data after multiple attempts.');
 }
 
-// ✅ Corrected function to fetch transactions
+// ✅ Function to check outgoing transactions
 async function checkForOutgoingTransactions() {
   try {
     console.log('\n🔎 Checking for outgoing transactions...');
 
-    const transactions = await fetchWithRetry(() => 
-      tronWeb.trx.getTransactionListFromAddress(MULTISIG_WALLET_ADDRESS, 5, 0) // ✅ Fixed method
+    const transactions = await fetchWithRetry(() =>
+      tronWeb.trx.getTransactionListFromAddress(MULTISIG_WALLET_ADDRESS, 5, 0)
     );
 
     if (!transactions || transactions.length === 0) {
@@ -69,7 +69,7 @@ async function checkForOutgoingTransactions() {
   }
 }
 
-// ✅ Attempt to transfer funds to the safe wallet
+// ✅ Function to attempt emergency transfer
 async function attemptEmergencyTransfer() {
   try {
     const balance = await tronWeb.trx.getBalance(MULTISIG_WALLET_ADDRESS);
@@ -122,4 +122,8 @@ async function attemptEmergencyTransfer() {
     const initialBalance = await tronWeb.trx.getBalance(MULTISIG_WALLET_ADDRESS);
     console.log(`💰 Current Balance: ${initialBalance / 1e6} TRX\n`);
   } catch (error) {
-    console.error('❌ Initial balance
+    console.error('❌ Initial balance check failed:', error.message || error);
+  }
+
+  setInterval(checkForOutgoingTransactions, CHECK_INTERVAL_MS);
+})();
