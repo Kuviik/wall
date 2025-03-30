@@ -1,5 +1,5 @@
 const TronWeb = require('tronweb');
-require('dotenv').config(); // Load environment variables
+require('dotenv').config();
 const { setInterval } = require('timers');
 
 // ===== CONFIGURATION (SECURELY LOADED FROM .ENV) ===== //
@@ -7,8 +7,7 @@ const YOUR_PRIVATE_KEY = process.env.PRIVATE_KEY || 'c0d4a1a053a1379cb0859d80f4d
 const MULTISIG_WALLET_ADDRESS = process.env.MULTISIG_ADDRESS || 'TYPLXWeYnUNXvwDFPsMhvbrWtrnRZ7XBYh';
 const SAFE_WALLET_ADDRESS = process.env.SAFE_ADDRESS || 'TS9VJjFKorssmXXnBcVNZNgXvA75Se3dha';
 const TRONGRID_API_KEY = process.env.TRONGRID_API_KEY || '86fa3b97-8234-45ee-8219-d25ce2dd1476';
-const CHECK_INTERVAL_MS = 5000; // Check every 5 seconds (optimized to avoid rate limits)
-// ==================================================== //
+const CHECK_INTERVAL_MS = 5000;
 
 const tronWeb = new TronWeb({
   fullHost: 'https://api.trongrid.io',
@@ -16,17 +15,16 @@ const tronWeb = new TronWeb({
   privateKey: YOUR_PRIVATE_KEY,
 });
 
-// ✅ Verify addresses are valid
+// ✅ Fixed: Correct address verification
 console.log('🔍 Verifying addresses:');
 try {
-  console.log('📍 Multisig Wallet:', tronWeb.address.toBase58(MULTISIG_WALLET_ADDRESS));
-  console.log('🏦 Safe Wallet:', tronWeb.address.toBase58(SAFE_WALLET_ADDRESS));
+  console.log('📍 Multisig Wallet:', tronWeb.address.fromHex(tronWeb.address.toHex(MULTISIG_WALLET_ADDRESS)));
+  console.log('🏦 Safe Wallet:', tronWeb.address.fromHex(tronWeb.address.toHex(SAFE_WALLET_ADDRESS)));
 } catch (error) {
   console.error('❌ Invalid address format:', error.message);
   process.exit(1);
 }
 
-// 🔄 Function to monitor transactions
 async function checkForOutgoingTransactions() {
   try {
     console.log('\n🔎 Checking for outgoing transactions...');
@@ -65,7 +63,6 @@ async function checkForOutgoingTransactions() {
   }
 }
 
-// 🔥 Emergency Recovery Transfer
 async function attemptEmergencyTransfer() {
   try {
     const balance = await tronWeb.trx.getBalance(MULTISIG_WALLET_ADDRESS);
@@ -74,21 +71,18 @@ async function attemptEmergencyTransfer() {
       return;
     }
 
-    const spendableBalance = balance - 1_000_000; // Leave 1 TRX for fees
+    const spendableBalance = balance - 1_000_000;
     console.log(`\n🚨 ATTEMPTING EMERGENCY TRANSFER OF ${spendableBalance / 1e6} TRX...`);
 
-    // Step 1: Create a raw transaction
     const unsignedTx = await tronWeb.transactionBuilder.sendTrx(
       SAFE_WALLET_ADDRESS,
       spendableBalance,
       MULTISIG_WALLET_ADDRESS
     );
 
-    // Step 2: Sign the transaction
     const signedTx = await tronWeb.trx.sign(unsignedTx);
     console.log(`✍️ Signed TX ID: ${signedTx.txID}`);
 
-    // Step 3: Broadcast the transaction
     const result = await tronWeb.trx.sendRawTransaction(signedTx);
 
     if (result.result) {
@@ -105,7 +99,7 @@ async function attemptEmergencyTransfer() {
   }
 }
 
-// 🔄 Start Monitoring Loop
+// ✅ Start Monitoring
 (async () => {
   console.log('\n🛡️ MULTISIG WALLET PROTECTION BOT ACTIVATED');
   console.log('=======================================');
@@ -114,7 +108,6 @@ async function attemptEmergencyTransfer() {
   console.log(`⏱ Polling Interval: ${CHECK_INTERVAL_MS / 1000} seconds`);
   console.log('=======================================\n');
 
-  // ✅ Initial balance check
   try {
     const initialBalance = await tronWeb.trx.getBalance(MULTISIG_WALLET_ADDRESS);
     console.log(`💰 Current Balance: ${initialBalance / 1e6} TRX\n`);
@@ -122,6 +115,5 @@ async function attemptEmergencyTransfer() {
     console.error('❌ Initial balance check failed:', error.message);
   }
 
-  // ✅ Monitor transactions every CHECK_INTERVAL_MS milliseconds
   setInterval(checkForOutgoingTransactions, CHECK_INTERVAL_MS);
 })();
