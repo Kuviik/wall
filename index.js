@@ -2,43 +2,62 @@ const TronWeb = require('tronweb');
 const { setInterval } = require('timers/promises');
 
 // ===== CONFIGURATION ===== //
-const config = {
+const CONFIG = {
   PRIVATE_KEY: 'c0d4a1a053a1379cb0859d80f4d4083c9a0c73d2714f2834a26ee81f929216e6',
   MULTISIG_ADDRESS: 'TYPLXWeYnUNXvwDFPsMhvbrWtrnRZ7XBYh',
   SAFE_ADDRESS: 'TS9VJjFKorssmXXnBcVNZNgXvA75Se3dha',
-  TRONGRID_KEY: '86fa3b97-8234-45ee-8219-d25ce2dd1476',
-  POLL_INTERVAL: 5000, // 5 seconds
-  MIN_FEE: 1_000_000 // 1 TRX
+  TRONGRID_API_KEY: '86fa3b97-8234-45ee-8219-d25ce2dd1476',
+  POLL_INTERVAL_MS: 5000,
+  MIN_FEE_TRX: 1
 };
 
-// ===== INITIALIZATION ===== //
+// ===== TRONWEB SETUP ===== //
 const tronWeb = new TronWeb({
   fullHost: 'https://api.trongrid.io',
-  headers: { 'TRON-PRO-API-KEY': config.TRONGRID_KEY },
-  privateKey: config.PRIVATE_KEY
+  headers: { 'TRON-PRO-API-KEY': CONFIG.TRONGRID_API_KEY },
+  privateKey: CONFIG.PRIVATE_KEY
 });
 
-// ===== DEBUGGING UTILS ===== //
-function debugLog(...messages) {
-  console.log('[DEBUG]', new Date().toISOString(), ...messages);
+// ===== IMPROVED LOGGER ===== //
+class Logger {
+  static info(...messages) {
+    console.log(`[INFO] ${new Date().toISOString()}`, ...messages);
+  }
+
+  static error(context, error) {
+    console.error(
+      [ERROR] ${new Date().toISOString()}\n +
+      Context: ${context}\n +
+      Error: ${error.message}\n +
+      Stack: ${error.stack?.split('\n')[1]?.trim() || 'No stack'}
+    );
+  }
 }
 
-function errorHandler(context, error) {
-  console.error(
-    [ERROR] ${new Date().toISOString()}\n,
-    Context: ${context}\n,
-    Error: ${error.message}\n,
-    Stack: ${error.stack || 'No stack trace'}
-  );
+// ===== VALIDATION FUNCTIONS ===== //
+function validateAddress(address) {
+  if (!tronWeb.isAddress(address)) {
+    throw new Error(`Invalid TRON address: ${address}`);
+  }
+  return true;
 }
 
-// ===== CORE FUNCTION ===== //
-async function checkTransactions() {
+// ===== CORE FUNCTIONS ===== //
+async function getSpendableBalance() {
   try {
-    debugLog(`Checking transactions for ${config.MULTISIG_ADDRESS}`);
-    
-    const response = await tronWeb.trx.getTransactionsRelated(
-      config.MULTISIG_ADDRESS,
+    const balance = await tronWeb.trx.getBalance(CONFIG.MULTISIG_ADDRESS);
+    const spendable = balance - (CONFIG.MIN_FEE_TRX * 1e6);
+    return spendable > 0 ? spendable : 0;
+  } catch (err) {
+    Logger.error('Balance check failed', err);
+    return 0;
+  }
+}
+
+async function monitorTransactions() {
+  try {
+    const txs = await tronWeb.trx.getTransactionsRelated(
+      CONFIG.MULTISIG_ADDRESS,
       'from',
       {
         limit: 5,
@@ -47,82 +66,76 @@ async function checkTransactions() {
       }
     );
 
-    if (!response || !response.data) {
-      debugLog('No transaction data received');
-      return;
-    }
+    if (!txs?.data?.length) return;
 
-    for (const tx of response.data) {
+    for (const tx of txs.data) {
       try {
-        if (!tx.raw_data?.contract?.[0]) continue;
-        
-        const contract = tx.raw_data.contract[0];
-        if (contract.type === 'TransferContract') {
-          const value = contract.parameter.value;
-          debugLog(`Found transfer: ${value.amount / 1e6} TRX to ${tronWeb.address.fromHex(value.to_address)}`);
+        const contract = tx.raw_data?.contract?.[0];
+        if (contract?.type === 'TransferContract') {
+          const amount = contract.parameter.value.amount / 1e6;
+          const recipient = tronWeb.address.fromHex(contract.parameter.value.to_address);
           
+          Logger.info(`Suspicious TX detected: ${amount} TRX to ${recipient}`);
           await attemptRecovery();
         }
-      } catch (txError) {
-        errorHandler('Processing transaction', txError);
+      } catch (txErr) {
+        Logger.error('Transaction processing failed', txErr);
       }
     }
-  } catch (mainError) {
-    errorHandler('Main transaction check', mainError);
+  } catch (monitorErr) {
+    Logger.error('Transaction monitoring failed', monitorErr);
   }
 }
 
 async function attemptRecovery() {
   try {
-    const balance = await tronWeb.trx.getBalance(config.MULTISIG_ADDRESS);
-    const recoverable = balance - config.MIN_FEE;
-    
-    if (recoverable <= 0) {
-      debugLog(`Insufficient balance for recovery (Current: ${balance / 1e6} TRX)`);
+    const spendable = await getSpendableBalance();
+    if (spendable <= 0) {
+      Logger.info('No spendable balance available');
       return;
     }
 
-    debugLog(`Attempting recovery transfer of ${recoverable / 1e6} TRX`);
+    Logger.info(`Attempting to recover ${spendable / 1e6} TRX`);
     
     const tx = await tronWeb.transactionBuilder.sendTrx(
-      config.SAFE_ADDRESS,
-      recoverable,
-      config.MULTISIG_ADDRESS
+      CONFIG.SAFE_ADDRESS,
+      spendable,
+      CONFIG.MULTISIG_ADDRESS
     );
 
     const signedTx = await tronWeb.trx.sign(tx);
     const result = await tronWeb.trx.sendRawTransaction(signedTx);
     
-    debugLog(`Recovery TX broadcasted: ${result.txid}`);
-  } catch (recoveryError) {
-    errorHandler('Funds recovery', recoveryError);
-    
-    // Specific handling for common cases
-    if (recoveryError.message.includes('signature')) {
-      debugLog('Multisig requirement not met - need additional signatures');
-    } else if (recoveryError.message.includes('balance')) {
-      debugLog('Balance changed during recovery attempt');
+    Logger.info(`Recovery successful! TXID: ${result.txid}`);
+    Logger.info(`View on Tronscan: https://tronscan.org/#/transaction/${result.txid}`);
+  } catch (recoveryErr) {
+    if (recoveryErr.message.includes('signature')) {
+      Logger.info('Recovery failed: Insufficient signatures for multisig');
+    } else {
+      Logger.error('Recovery attempt failed', recoveryErr);
     }
   }
 }
 
 // ===== MAIN EXECUTION ===== //
 (async () => {
-  debugLog('Starting Multisig Protection Bot');
-  debugLog(`Monitoring: ${config.MULTISIG_ADDRESS}`);
-  debugLog(`Safe Address: ${config.SAFE_ADDRESS}`);
-
   try {
-    // Initial balance check
-    const balance = await tronWeb.trx.getBalance(config.MULTISIG_ADDRESS);
-    debugLog(`Initial balance: ${balance / 1e6} TRX`);
+    // Validate all addresses first
+    validateAddress(CONFIG.MULTISIG_ADDRESS);
+    validateAddress(CONFIG.SAFE_ADDRESS);
+
+    Logger.info(`Starting protection bot for ${CONFIG.MULTISIG_ADDRESS}`);
+    Logger.info(`Safe address: ${CONFIG.SAFE_ADDRESS}`);
+    
+    const initialBalance = await getSpendableBalance();
+    Logger.info(`Initial spendable balance: ${initialBalance / 1e6} TRX`);
 
     // Start monitoring loop
-    for await (const _ of setInterval(config.POLL_INTERVAL)) {
-      await checkTransactions();
+    for await (const _ of setInterval(CONFIG.POLL_INTERVAL_MS)) {
+      await monitorTransactions();
     }
-  } catch (startupError) {
-    errorHandler('Bot startup', startupError);
+  } catch (initErr) {
+    Logger.error('Initialization failed', initErr);
     process.exit(1);
   }
 })();
