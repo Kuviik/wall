@@ -15,7 +15,7 @@ const tronWeb = new TronWeb({
   privateKey: YOUR_PRIVATE_KEY,
 });
 
-// ✅ Fixed: Correct address verification
+// ✅ Verify addresses
 console.log('🔍 Verifying addresses:');
 try {
   console.log('📍 Multisig Wallet:', tronWeb.address.fromHex(tronWeb.address.toHex(MULTISIG_WALLET_ADDRESS)));
@@ -29,12 +29,13 @@ async function checkForOutgoingTransactions() {
   try {
     console.log('\n🔎 Checking for outgoing transactions...');
     
-    // ✅ Fixed: Correctly passing limit directly
-    const transactions = await tronWeb.trx.getTransactionsRelated(
-      MULTISIG_WALLET_ADDRESS,
-      'from',
-      10 // Corrected limit
+    // ✅ Fixed: Correct way to fetch transaction history
+    const response = await fetch(
+      `https://api.trongrid.io/v1/accounts/${MULTISIG_WALLET_ADDRESS}/transactions?limit=10`,
+      { headers: { 'TRON-PRO-API-KEY': TRONGRID_API_KEY } }
     );
+
+    const transactions = await response.json();
 
     if (!transactions || !transactions.data || transactions.data.length === 0) {
       console.log('✅ No suspicious outgoing transactions detected.');
