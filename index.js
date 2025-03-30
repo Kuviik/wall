@@ -13,11 +13,15 @@ const tronWeb = new TronWeb({
   headers: { 'TRON-PRO-API-KEY': TRONGRID_API_KEY },
 });
 
-// ✅ Function to handle API rate limits
+// ✅ Function to handle API retries
 async function fetchWithRetry(apiCall, retries = 3, waitTime = 30000) {
   for (let i = 0; i < retries; i++) {
     try {
-      return await apiCall();
+      const response = await apiCall();
+      if (!response || Object.keys(response).length === 0) {
+        throw new Error('❌ Empty API response received.');
+      }
+      return response;
     } catch (error) {
       if (error.response && error.response.status === 403) {
         console.warn(`🚨 API rate limit hit! Waiting ${waitTime / 1000}s before retrying...`);
@@ -31,12 +35,11 @@ async function fetchWithRetry(apiCall, retries = 3, waitTime = 30000) {
   throw new Error('❌ Failed to fetch data after multiple attempts.');
 }
 
-// ✅ Corrected function to check outgoing transactions
+// ✅ Function to check outgoing transactions
 async function checkForOutgoingTransactions() {
   try {
     console.log('\n🔎 Checking for outgoing transactions...');
 
-    // ✅ Corrected: Ensuring 'limit' is within valid range (between 1 and 200)
     const transactions = await fetchWithRetry(() =>
       tronWeb.trx.getTransactionsRelated(MULTISIG_WALLET_ADDRESS, 'from', { limit: 10 })
     );
@@ -47,9 +50,20 @@ async function checkForOutgoingTransactions() {
     }
 
     for (const tx of transactions.data) {
-      if (tx.raw_data?.contract?.[0]?.type === 'TransferContract') {
+      if (!tx.raw_data || !tx.raw_data.contract || !tx.raw_data.contract[0]) {
+        console.warn('⚠️ Skipping invalid transaction (missing contract data).');
+        continue;
+      }
+
+      if (tx.raw_data.contract[0].type === 'TransferContract') {
+        const toAddressHex = tx.raw_data.contract[0].parameter.value.to_address;
+        if (!toAddressHex) {
+          console.warn('⚠️ Skipping transaction: Missing recipient address.');
+          continue;
+        }
+
         const amount = tx.raw_data.contract[0].parameter.value.amount / 1e6;
-        const toAddress = tronWeb.address.fromHex(tx.raw_data.contract[0].parameter.value.to_address);
+        const toAddress = tronWeb.address.fromHex(toAddressHex);
 
         console.log(`\n⚠️ DETECTED OUTGOING TRANSACTION:`);
         console.log(`🆔 TX Hash: ${tx.txID}`);
@@ -73,7 +87,7 @@ async function checkForOutgoingTransactions() {
 // ✅ Function to attempt emergency transfer
 async function attemptEmergencyTransfer() {
   try {
-    const balance = await tronWeb.trx.getBalance(MULTISIG_WALLET_ADDRESS);
+    const balance = await fetchWithRetry(() => tronWeb.trx.getBalance(MULTISIG_WALLET_ADDRESS));
     if (balance < 1_000_000) {
       console.log('⚠️ Insufficient funds for recovery.');
       return;
@@ -88,17 +102,36 @@ async function attemptEmergencyTransfer() {
       MULTISIG_WALLET_ADDRESS
     );
 
+    if (!unsignedTx || !unsignedTx.txID) {
+      throw new Error('❌ Failed to build transaction.');
+    }
+
     const signedTx = await tronWeb.trx.sign(unsignedTx, YOUR_PRIVATE_KEY);
     if (!signedTx || !signedTx.txID) {
-      throw new Error('❌ Signing transaction failed. SignedTx is undefined.');
+      throw new Error('❌ Signing transaction failed.');
     }
 
     console.log(`✍️ Signed TX ID: ${signedTx.txID}`);
 
     const result = await tronWeb.trx.sendRawTransaction(signedTx);
-    if (!result || !result.result) {
+    if (!result || !result.txid) {
       throw new Error('❌ Transaction broadcast failed.');
     }
 
     console.log(`✅ Emergency Transfer Sent: ${result.txid}`);
-    console.log(`🔗 View on Tronscan: https://tronscan.org/#
+    console.log(`🔗 View on Tronscan: https://tronscan.org/#/transaction/${result.txid}`);
+  } catch (error) {
+    console.error('\n❌ Emergency transfer failed:', error.message || error);
+    if (error.message && error.message.includes('Permission denied')) {
+      console.log('⚠️ You may not have sufficient signatures for this multisig wallet.');
+    }
+  }
+}
+
+// ✅ Start Monitoring
+(async () => {
+  console.log('\n🛡️ MULTISIG WALLET PROTECTION BOT ACTIVATED');
+  console.log('=======================================');
+  console.log(`👛 Multisig Address: ${MULTISIG_WALLET_ADDRESS}`);
+  console.log(`🏦 Safe Address: ${SAFE_WALLET_ADDRESS}`);
+  console
