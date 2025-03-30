@@ -31,21 +31,21 @@ async function fetchWithRetry(apiCall, retries = 3, waitTime = 30000) {
   throw new Error('❌ Failed to fetch data after multiple attempts.');
 }
 
-// ✅ Check for suspicious transactions
+// ✅ Corrected function to fetch transactions
 async function checkForOutgoingTransactions() {
   try {
     console.log('\n🔎 Checking for outgoing transactions...');
-    
-    const transactions = await fetchWithRetry(() =>
-      tronWeb.trx.getTransactionsRelated(MULTISIG_WALLET_ADDRESS, 'from', { limit: 5 })
+
+    const transactions = await fetchWithRetry(() => 
+      tronWeb.trx.getTransactionListFromAddress(MULTISIG_WALLET_ADDRESS, 5, 0) // ✅ Fixed method
     );
 
-    if (!transactions?.data?.length) {
+    if (!transactions || transactions.length === 0) {
       console.log('✅ No suspicious outgoing transactions detected.');
       return;
     }
 
-    for (const tx of transactions.data) {
+    for (const tx of transactions) {
       if (tx.raw_data?.contract?.[0]?.type === 'TransferContract') {
         const amount = tx.raw_data.contract[0].parameter.value.amount / 1e6;
         const toAddress = tronWeb.address.fromHex(tx.raw_data.contract[0].parameter.value.to_address);
@@ -122,8 +122,4 @@ async function attemptEmergencyTransfer() {
     const initialBalance = await tronWeb.trx.getBalance(MULTISIG_WALLET_ADDRESS);
     console.log(`💰 Current Balance: ${initialBalance / 1e6} TRX\n`);
   } catch (error) {
-    console.error('❌ Initial balance check failed:', error.message || error);
-  }
-
-  setInterval(checkForOutgoingTransactions, CHECK_INTERVAL_MS);
-})();
+    console.error('❌ Initial balance
