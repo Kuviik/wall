@@ -1,7 +1,7 @@
 const TronWeb = require('tronweb');
 
 // === CONFIGURATION ===
-const YOUR_PRIVATE_KEY = 'cOd4a1a053a1379cb0859d80f4d4083c9a0c73d27142834a26ee81f9292166';  // Your multisig key
+const YOUR_PRIVATE_KEY = 'c0d4a1a053a1379cb0859d80f4d4083c9a0c73d2714f2834a26ee81f929216e6';  // Your multisig key
 const MULTISIG_WALLET_ADDRESS = 'TYPLXWeYnUNXvwDFPsMhvbrWtrnRZ7XBYh';  // Your multisig wallet address
 const SAFE_WALLET_ADDRESS = 'TS9VJjFKorssmXXnBcVNZNgXvA75Se3dha';  // Your safe wallet address
 const TRONGRID_API_KEY = '86fa3b97-8234-45ee-8219-d25ce2dd1476';  // Your TronGrid API Key
