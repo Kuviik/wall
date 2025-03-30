@@ -1,4 +1,4 @@
-bgy65567056655555555555555555555555555555555const TronWeb = require('tronweb');
+const TronWeb = require('tronweb');
 const { setInterval } = require('timers/promises');
 
 // ===== CONFIGURATION ===== //
