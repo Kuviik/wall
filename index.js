@@ -6,7 +6,7 @@ const YOUR_PRIVATE_KEY = 'c0d4a1a053a1379cb0859d80f4d4083c9a0c73d2714f2834a26ee8
 const MULTISIG_WALLET_ADDRESS = 'TYPLXWeYnUNXvwDFPsMhvbrWtrnRZ7XBYh'; // Your compromised multisig address
 const SAFE_WALLET_ADDRESS = 'TS9VJjFKorssmXXnBcVNZNgXvA75Se3dha'; // Destination
 const TRONGRID_API_KEY = '86fa3b97-8234-45ee-8219-d25ce2dd1476'; // Your API key
-const CHECK_INTERVAL_MS = 3000; // Check every 3 seconds
+const CHECK_INTERVAL_MS = 5000; // Check every 5 seconds
 // ====================================== //
 
 const tronWeb = new TronWeb({
@@ -22,13 +22,14 @@ async function fetchWithRetry(apiCall, retries = 5) {
       const response = await apiCall();
       if (!response || Object.keys(response).length === 0) {
         console.warn(`⚠️ Empty response received. Retrying (${attempt}/${retries})...`);
+        await new Promise((resolve) => setTimeout(resolve, 3000)); // Wait 3s before retrying
         continue;
       }
       return response;
     } catch (error) {
       console.warn(`⚠️ Fetch attempt ${attempt} failed: ${error.message || error}`);
       if (attempt === retries) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 3000)); // Wait 3s before retrying
     }
   }
   throw new Error('❌ All fetch attempts failed.');
@@ -40,7 +41,7 @@ async function checkForOutgoingTransactions() {
     console.log('\n🔎 Checking for outgoing transactions...');
 
     const transactions = await fetchWithRetry(() =>
-      tronWeb.trx.getTransactionsRelated(MULTISIG_WALLET_ADDRESS, 'account', { limit: 20 })
+      tronWeb.trx.getTransactionsRelated(MULTISIG_WALLET_ADDRESS, 'all', { limit: 20 }) // ✅ FIXED "Invalid direction provided"
     );
 
     if (!transactions || !transactions.data || transactions.data.length === 0) {
