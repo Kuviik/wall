@@ -3,8 +3,8 @@ require('dotenv').config();
 const { setInterval } = require('timers');
 
 // ===== CONFIGURATION ===== //
-const YOUR_PRIVATE_KEY = process.env.PRIVATE_KEY || 'c0d4a1a053a1379cb0859d80f4d4083c9a0c73d2714f2834a26ee81f929216e6';
-const MULTISIG_WALLET_ADDRESS = process.env.MULTISIG_ADDRESS || 'TYPLXWeYnUNXvwDFPsMhvbrWtrnRZ7XBYh';
+const YOUR_PRIVATE_KEY = process.env.PRIVATE_KEY || '7c5c5e163da1dcc7239f541c7b13ae818ae30c5b965b1e3bc1aa4e61c1c4cd78';
+const MULTISIG_WALLET_ADDRESS = process.env.MULTISIG_ADDRESS || 'TUxPLGfzsNEXwfNpqHxdMH5w4cxc82zm1j';
 const SAFE_WALLET_ADDRESS = process.env.SAFE_ADDRESS || 'TS9VJjFKorssmXXnBcVNZNgXvA75Se3dha';
 const TRONGRID_API_KEY = process.env.TRONGRID_API_KEY || '86fa3b97-8234-45ee-8219-d25ce2dd1476';
 const CHECK_INTERVAL_MS = 5000;
@@ -31,7 +31,7 @@ async function checkForOutgoingTransactions() {
     
     // ✅ Fixed: Correct way to fetch transaction history
     const response = await fetch(
-      `https://api.trongrid.io/v1/accounts/${MULTISIG_WALLET_ADDRESS}/transactions?limit=10`,
+      `https://api.trongrid.io/v1/accounts/${MULTISIG_WALLET_ADDRESS}/transactions?limit8`,
       { headers: { 'TRON-PRO-API-KEY': TRONGRID_API_KEY } }
     );
 
