@@ -22,41 +22,24 @@ async function fetchWithRetry(apiCall, retries = 5) {
       return await apiCall();
     } catch (error) {
       console.warn(`⚠️ Fetch attempt ${attempt} failed: ${error.message || error}`);
+      if (error.response && error.response.status === 405) {
+        console.error('❌ API Error: Method Not Allowed (405). Please check API docs.');
+        return;
+      }
       if (attempt === retries) throw error;
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
   }
 }
 
-// ✅ Initial balance check
-(async () => {
-  console.log('\n🛡️ MULTISIG WALLET PROTECTION BOT ACTIVATED');
-  console.log('=======================================');
-  console.log(`👛 Multisig Address: ${MULTISIG_WALLET_ADDRESS}`);
-  console.log(`🏦 Safe Address: ${SAFE_WALLET_ADDRESS}`);
-  console.log(`⏱ Polling Interval: ${CHECK_INTERVAL_MS / 1000} seconds`);
-  console.log('=======================================\n');
-
-  try {
-    const balance = await fetchWithRetry(() => tronWeb.trx.getBalance(MULTISIG_WALLET_ADDRESS));
-    console.log(`💰 Current Balance: ${balance / 1e6} TRX\n`);
-  } catch (error) {
-    console.error('❌ Initial balance check failed:', error.message || error);
-  }
-
-  for await (const _ of setInterval(CHECK_INTERVAL_MS)) {
-    await checkForOutgoingTransactions();
-  }
-})();
-
-// ✅ Fix API call to check outgoing transactions
+// ✅ Correct API call to check outgoing transactions
 async function checkForOutgoingTransactions() {
   try {
     console.log('\n🔎 Checking for outgoing transactions...');
 
-    // Fetch the latest transactions FROM this wallet
+    // 🔥 FIX: Use "getTransactionsRelated" with "account" instead of "from"
     const transactions = await fetchWithRetry(() =>
-      tronWeb.trx.getTransactionsRelated(MULTISIG_WALLET_ADDRESS, 'from')
+      tronWeb.trx.getTransactionsRelated(MULTISIG_WALLET_ADDRESS, 'account', { limit: 20 })
     );
 
     if (!transactions || !transactions.data || transactions.data.length === 0) {
@@ -100,27 +83,4 @@ async function attemptEmergencyTransfer() {
     const spendableBalance = balance - 1_000_000; // Leave 1 TRX for fees
 
     if (spendableBalance > 0) {
-      console.log(`\n🚨 ATTEMPTING EMERGENCY TRANSFER OF ${spendableBalance / 1e6} TRX...`);
-
-      const unsignedTx = await tronWeb.transactionBuilder.sendTrx(
-        SAFE_WALLET_ADDRESS,
-        spendableBalance,
-        MULTISIG_WALLET_ADDRESS
-      );
-
-      const signedTx = await tronWeb.trx.sign(unsignedTx);
-      console.log(`✍️ Signed TX ID: ${signedTx.txID}`);
-
-      const result = await fetchWithRetry(() => tronWeb.trx.sendRawTransaction(signedTx));
-      console.log('✅ Transaction Broadcasted:', result.txid);
-      console.log('🔗 View on Tronscan:', `https://tronscan.org/#/transaction/${result.txid}`);
-    } else {
-      console.log('\nℹ️ No spendable balance left in the wallet.');
-    }
-  } catch (error) {
-    console.error('\n❌ Emergency transfer failed:', error.message || error);
-    if (error.message.includes('Permission denied')) {
-      console.log('⚠️ You may not have sufficient signatures for this multisig wallet.');
-    }
-  }
-}
+      console.log(`\n🚨 ATTEMPTING EMERGENCY TRANSFER
