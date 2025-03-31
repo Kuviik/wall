@@ -31,7 +31,7 @@ async function checkForOutgoingTransactions() {
     
     // ✅ Fixed: Correct way to fetch transaction history
     const response = await fetch(
-      `https://api.trongrid.io/v1/accounts/${MULTISIG_WALLET_ADDRESS}/transactions?limit8`,
+      `https://api.trongrid.io/v1/accounts/${MULTISIG_WALLET_ADDRESS}/transactions?limit10`,
       { headers: { 'TRON-PRO-API-KEY': TRONGRID_API_KEY } }
     );
 
